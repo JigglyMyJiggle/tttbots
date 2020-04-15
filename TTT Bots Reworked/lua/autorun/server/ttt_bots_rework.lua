@@ -10,20 +10,13 @@
         DONE 3/6/19 @ ??:?? (-) Allow bots to spot C4
         DONE 3/8/19 @ 1:02 AM (-) Chats should be based upon the bots' personalities.
         DONE 3/8/19 @ 4:05 PM (-) Traitors should always know where C4 is and avoid it.
-        IMPOSSIBLE (-) Disguisers should have an effect on bots
-        IMPOSSIBLE? (-) Radios should have an effect on bots
-        DONE ?/?/?? @ ?:?? PM (-) Optional C4, off by default
+        IMPOSSIBLE (-) Disguisers should have an effect
+        IMPOSSIBLE (-) Radios should have an effect
 
-        (-) Improve on the line of sight system, as :Visible() lets bots see in 360 degrees.
-        (-) Replace current attack system with a cs:go like attack system, whereas bots will have a poor initial accuracy which gets gradually better the longer they are shooting
-        (-) Retry radios and attempt to implement a 'hearing' system.
-        (-) Attempt to add a strafing reaction for some personalities so they're not sitting ducks.
-        (-) Prevent bots from being stuck on one another by adding a squirm feature
-        (-) Traitor bots should acquire targets based on proximity and should have a probability to attack based upon quantity of bots nearby.
         (-) Allow Human KOS messages :  refer to KOSRequests table
-        
-        
+        (-) Optional C4, off by default
 
+    bot crate destroying is broken
 ]]
 
 
@@ -38,8 +31,6 @@ print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
 include("ttt_bot_profiles.lua")
 include("ttt_bot_chat.lua")
-include("ttt_bots_coordination.lua")
-include("ttt_bot_sound.lua")
 
 util.AddNetworkString( "RequestAddBots" )
 util.AddNetworkString( "RequestKickBots" )
@@ -143,7 +134,7 @@ end
 local DISABLEHIDING = 0
 local ROAMWALK = 1
 local WPM = 20
-roundIsActive = true
+local roundIsActive = true
 
 function Meta:UseHealthStation(cmd)
     local bot = self;
@@ -163,9 +154,9 @@ function Meta:UseHealthStation(cmd)
             cmd:SetButtons(IN_USE)
             //hs:Use(bot)
         end
-        return {true,hs}
+        return true
     end
-    return {false,nil}
+    return false
 end
 
 function Meta:IsKnownTraitor()
@@ -286,13 +277,6 @@ function Meta:InitializeBot(profile)
     bot.use = 0 // when 0, the bot can interact with doors
     bot.touse = false
     bot.tilt = 1.00 // accuracy modifier based on win/loss ratio of this bot.
-
-    bot.values = {
-        name = name,
-        status = "",
-        role = "nil"
-    }
-
     timer.Create("usetimer of bot "..bot:Nick(), 1, 0, function()
         if !IsValid(bot) then timer.Destroy("usertimer of bot "..name) return end
         bot.use = math.max(0,bot.use-1)
@@ -423,7 +407,6 @@ end
 local planter = nil
 function initiateMassacre()
     --massinit = true
-    error("This function should not be getting called anymore!")
     for i,v in pairs(GetTraitorBots()) do
         //print(v:Nick().." is a traitor and will attack "..30*personalities[v.personality+1].tgtspd.." seconds into the round.")
         timer.Simple(30*personalities[v.personality+1].tgtspd, function()
@@ -463,7 +446,6 @@ function initiateMassacre()
         end
     end)*/
 end
-
 local nav = nil
 hook.Add("TTTBeginRound", "TTTBotBeginRound", function()
     tttlogs = {}
@@ -474,7 +456,6 @@ hook.Add("TTTBeginRound", "TTTBotBeginRound", function()
     corspes = {}
     bombs = {}
     tbombs = {}
-    KOSRequests = {}
     roundIsActive = true
     if GetConVar("ttt_bot_rdm"):GetInt() == 1 then
         rdmer = table.Random(GetInnocentBots())
@@ -494,9 +475,7 @@ hook.Add("TTTBeginRound", "TTTBotBeginRound", function()
     else
         planter = nil
     end
-    timer.Simple(4, function()
-        dobreakcrates = false
-    end)
+
     if nav == nil then
         nav = navmesh.GetAllNavAreas()
         for _i,_v in pairs(nav) do
@@ -521,7 +500,6 @@ hook.Add("TTTBeginRound", "TTTBotBeginRound", function()
         bot.sniping = false
         bot.variation = math.random(1,100)
         bot.sniperspot = table.Random(sniperspots)
-        bot.patience = nil
         if bot:HasWeapon("weapon_zm_rifle") and personalities[tonumber(bot.personality)+1].snipes and bot:GetRoleString() == "innocent" then
             bot.willroam = false 
             bot.sniping = true
@@ -536,7 +514,7 @@ hook.Add("TTTBeginRound", "TTTBotBeginRound", function()
     
     detectiveBuy()
     detectiveTeamWork()
-    //initiateMassacre()
+    initiateMassacre()
     --timer.Simple(25, function() if roundIsActive then initiateMassacre(); end end)
 end)
 
@@ -548,9 +526,8 @@ hook.Add("TTTEndRound", "TTTBotEndRound", function(result)
     corpses = {}
     bombs = {}
     tbombs = {}
-    KOSRequests = {}
     roundIsActive = false
-    dobreakcrates=true
+    
     
     for i,bot in pairs(player.GetBots()) do
         bot.massinit = false
@@ -573,30 +550,6 @@ hook.Add("TTTEndRound", "TTTBotEndRound", function(result)
         bot.target = nil
     end
 end)
-
-function Meta:GetKosQuantity() -- returns amount of times that a bot/player has called a kos
-    local val = 0
-    for i,v in pairs(KOSRequests) do
-        if v.caller == self then
-            val = val + 1
-        end
-    end
-    return val
-end
-
-hook.Add("PlayerDeath", "GetKOSRequesterTTTBots", GetKosRequester)
-
-function GetKosRequester(victim, inflictor, attacker) 
-    for i,v in pairs(KOSRequests) do
-        if v.victim == victim then
-            if victim:GetRoleString() != "traitor" and v.caller:IsPlayer() then
-                if not v.caller:IsBot() then
-                    return v.caller
-                end
-            end
-        end
-    end
-end
 
 function Meta:PlantC4(cmd)
     local bot = self
@@ -709,18 +662,12 @@ function Meta:AttackFunction(cmd)
     end
 end
 
-function AddKnownTraitor(ply,caller)
+function AddKnownTraitor(ply)
     if not ply:HasEquipmentItem(EQUIP_DISGUISE) then
-        if !ply:IsKnownTraitor() and caller~=nil then
-            if !caller:IsKnownTraitor() then
-                traitors[#traitors+1] = ply
-                local tbl = {}
-                tbl.victim = ply
-                tbl.caller = caller
-                KOSRequests[#KOSRequests+1] = tbl
-                for i,v in pairs(player.GetHumans()) do
-                    v:ChatPrint(caller.." called a KOS on "..ply:Nick().."!")
-                end
+        if !ply:IsKnownTraitor() then
+            traitors[#traitors+1] = ply
+            for i,v in pairs(player.GetHumans()) do
+                v:ChatPrint("KOS on "..ply:Nick())
             end
         end
     end
@@ -732,7 +679,7 @@ function OnLogCreated(log)
     for i,bot in pairs(player.GetBots()) do
         if log.attacker != bot then
             if log.nearply then
-                if bot:Visible(log.attacker) /*or bot:Visible(log.victim)*/ then
+                if bot:Visible(log.attacker) or bot:Visible(log.victim) then
                     if !log.justified then
                         if bot.target == nil and bot:GetRoleString() != "traitor" then
                             if bot != log.victim then
@@ -899,18 +846,6 @@ end)
 timer.Create("TTTBotsSetLastPos", 1, 0, function()
 if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     for b, bot in pairs(player.GetBots()) do
-        if (bot.lastPos != nil) then
-            if VecDist(bot:GetPos(),bot.lastPos) < 100 then
-                bot.strafeval = math.random(-200,200)
-            else
-                if bot.target == nil or (IsValid(bot.target) and not bot:Visible(bot.target)) then
-                    bot.strafeval = 0
-                end
-            end
-        end
-        if (IsValid(bot.target) and bot:Visible(bot.target)) then
-            bot.strafeval = math.random(-200,200)
-        end
         bot.lastPos = bot:GetPos()
         bot.toggle = false
         bot.crouch = false
@@ -1117,10 +1052,6 @@ end
 if !ConVarExists("ttt_bot_rdm") then
     CreateConVar("ttt_bot_rdm", 0, 1, "Do troll bots RDM non-players? Adds to the chaos factor + gives the traitors a chance to win!")
 end
-if !ConVarExists("ttt_bot_debug_ui") then
-    CreateConVar("ttt_bot_debug_ui", 0, 1, "Displays the debug UI for all players.")
-end
-
 concommand.Add("ttt_bot_add", addbot)
 concommand.Add("ttt_bot_gennewnavmesh", function(ply)
     if IsValid(ply) then
@@ -1253,9 +1184,15 @@ function Meta:FollowPath( -- returns if the bot is within stopatdist of the goal
     nosee
 )
     local see = !nosee
+    --[[if goal == nil then return end
+    if cmd == nil then return end
+    if speed == nil then return end
+    if turnspeed == nil then return end
+    if spotatdist == nil then return end]]
     local nav = self.nav
     nav.PosGen = goal
     if nav.P == nil then return end
+    --print(#nav.P:GetAllSegments())
     local bot = self
     local look = nav.P:GetAllSegments() -- get segments of path
     local targ = nil -- vector
@@ -1429,7 +1366,7 @@ function Meta:GetNearestGun()
     end
     return g
 end
-local dobreakcrates = false;
+
 timer.Create("TTTBotCrates", 1, 0, function()
 if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     crates = {}
@@ -1445,7 +1382,6 @@ end)
 
 function Meta:AttackCrates(cmd)
     --local d = 9999999999
-    if not dobreakcrates then return false end
     local t = nil
     if self.target != nil then self.attackingcrate = false return false end
     for i,v in pairs(crates) do
@@ -1557,6 +1493,9 @@ function Meta:TargetStart(cmd)
             return
         end
     end
+    if bot.target == nil and bot:GetRoleString() == "traitor" and bot.massinit and planter != bot then
+        bot.target = table.Random(GetNonTraitors()) -- traitor picks a new target
+    end
     if bot.target != nil then
         --[[if !bot:Visible(bot.target) then
             bot:FollowPath(cmd,self.lastseen, 1000, 0.2, 0)
@@ -1567,37 +1506,19 @@ function Meta:TargetStart(cmd)
 
         if bot.target == NULL or !IsValid(bot.target) then bot.target = nil return end
         if bot == NULL then return end
+
         if VecDist(bot:GetPos(), bot.lastseen) < 64
          and not bot:Visible(bot.target) then
             bot.target = nil
-        end
-
-
-        if (bot.target != nil and bot:GetRoleString() == "traitor" and !bot:IsKnownTraitor()) then
-            if #bot.target:GetInnoViewers() > 2 then
-                bot.target = nil
-            end
         end
 
     end
 
 end
 
-local function drawLine(pos, color)
-    return {pos=pos,color=color}
-end
-
 local function startcmd(bot,cmd)
 if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     if bot:IsBot() == false then return end
-        local bvals = {
-            name = bot:Nick(),
-            hppct = bot:Health()/bot:GetMaxHealth(),
-            status = "",
-            role = bot:GetRoleString(),
-            bot = bot,
-            drawlines = {}
-        }
     cmd:ClearButtons()
     bot.attackingCrate = false
     if IsValid(bot.target) then
@@ -1607,9 +1528,9 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     else
         bot.target = nil
     end
-    
+
     if bot.chatting then return end
-    if math.random(1,100) == 99 then bot:emitSoundByType("throwgrenade", 100) end
+
     if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     if bot.nav:IsValid() == false then
         bot.nav = ents.Create("ttt_bots_nextbot") // create the nav
@@ -1659,7 +1580,7 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     --end
 
 
-    if bot.willroam == false and bot.sniping and bot.target == nil then -- go to a sniping spot if applicable
+    if bot.willroam == false and bot.sniping and bot.target == nil then
         bot:FollowPath(
             cmd,
             bot.sniperspot,
@@ -1669,10 +1590,7 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
         )
     end
 
-    bot:TargetStart(cmd) -- use the target start function to attack stuff
-    -- the above function us only called if we have a target!
-
-
+    bot:TargetStart(cmd)
     if bot.variation == nil then bot.variation = math.random(1,100) end
 
     --if !bot.attackingCrate then
@@ -1691,7 +1609,7 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
         else
         bot.override = nil
     end
-    if cont then --select their weapon
+    if cont then
         if bot.armed == false and bot.noweaponswitch == nil then
             cmd:SelectWeapon(bot:GetWeaponByClass("weapon_zm_improvised"))
         else
@@ -1706,23 +1624,19 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
         bot:MoveToHidingSpot(cmd,true)
     end
 
-    if bot.corpse != nil and bot.target == nil then -- go and identify the corpse
+    if bot.corpse != nil then
         if IsValid(bot.corpse) then
-            if not table.HasValue(corpses, bot.corpse) then
-                bot.corpse = nil // stop them from identifying an already identified corpse
-                local withinRange = bot:FollowPath(cmd,bot.corpse:GetPos(),1000,0.2,120)
-                if (withinRange) then
-                    bot:BotSay("I've found a corpse!")
-                    CORPSE.ShowSearch(bot,bot.corpse,false,false)
-                    table.RemoveByValue(corpses,bot.corpse)
-                    
-                    bot.willroam = false
-                    timer.Simple(1, function() if IsValid(bot) then bot.willroam = true end end )
-                    bot.corpse = nil
-                end
-            else
+            local withinRange = bot:FollowPath(cmd,bot.corpse:GetPos(),1000,0.2,120)
+            if (withinRange) then
+                CORPSE.ShowSearch(bot,bot.corpse,false,false)
+                table.RemoveByValue(corpses,bot.corpse)
+                
+                bot.willroam = false
+                timer.Simple(1, function() if IsValid(bot) then bot.willroam = true end end )
                 bot.corpse = nil
             end
+        else
+            bot.corpse = nil
         end
     end
 
@@ -1730,58 +1644,17 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
         bot:SelectWeapon("weapon_ttt_health_station")
         cmd:SetButtons(IN_ATTACK)
     end]]
-    if bot:Health() < bot:GetMaxHealth() and not bot:IsSpec() and bot.target == nil and roundIsActive then -- tell the bot to use a health station if the conditions are met
+    if bot:Health() < bot:GetMaxHealth() and not bot:IsSpec() and bot.target == nil and roundIsActive then
         
-        bvals.status = bvals.status .. "\nHealing."
-        
-        local b = bot:UseHealthStation(cmd)
-        if (b[1]) then
-            table.insert(bvals.drawlines, drawLine(b[2]:GetPos(),Color(0,255,0)))
+        if (bot:UseHealthStation(cmd)) then
+            bot.willroam = false
         end
     else
         bot.willroam = true
-        
     end
 
     if bot.attackingCrate then
         //cmd:SetButtons(IN_FORWARD, IN_ATTACK, IN_DUCK)
-    end
-
-    if IsValid(bot.target) and bot:Health() > 0 and not bot:IsSpec() then
-        bvals.status = bvals.status .. "\nAttacking target."
-        table.insert(bvals.drawlines, drawLine(bot.target:GetPos(),Color(255,0,0)))
-    end
-
-    if (bot.corpse != nil and IsValid(bot.corpse)) and bot:Health() > 0 and not bot:IsSpec() then
-        bvals.status = bvals.status .. "\nSees corpse."
-        table.insert(bvals.drawlines, drawLine(bot.corpse:GetPos(),Color(0,0,255)))
-    end
-
-    if (bot.willroam) and bot:Health() > 0 and not bot:IsSpec() then
-        bvals.status = bvals.status .. "\nCan roam."
-        else
-        bvals.status = bvals.status .. "\nCannot roam."
-    end
-
-    bvals.status = bvals.status .. "\nSpd="..cmd:GetForwardMove();
-
-    if IsValid(bot.ptargs) and bot:GetRoleString() == "traitor" and roundIsActive then
-        for i,v in pairs(bot.ptargs) do
-            print(i)
-            table.insert(bvals.drawlines, drawLine(bot.ptargs[i]:GetPos(),Color(0,0,255,100)))
-        end
-    end
-
-    if bot:Health() <= 0 or bot:IsSpec() then
-        bvals.drawlines = {}
-    end
-    bot.status = bvals
-        //bot:SetVelocity( VectorRand() * 10 )
-
-    if IsValid(bot.strafeval) then
-        local a = Angle(0, 90, 0)
-        bot:SetVelocity((cmd:GetViewAngles()+a):Forward()*(strafeval/10))
-        
     end
 end
 
@@ -1864,7 +1737,7 @@ function Meta:GetInnoViewers()
     local bot = self
     local bots = {}
     for i,v in pairs(player.GetAll()) do
-        if v:Visible(bot) and v:GetRoleString() ~= "traitor" and not v:IsSpec() and v:Health() > 0 then
+        if v:Visible(bot) and v:GetRoleString() ~= "traitor" then
             //print(v:Nick(),bot:Nick())
             if v:Nick() != bot:Nick() then
                 bots[#bots+1] = v
@@ -1918,10 +1791,10 @@ timer.Create("TTTDetectTraitorWeapons", 1, 0, function()
                                     if not callout then
                                         if not bot:HasEquipmentItem(EQUIP_DISGUISE) then
                                             local chat = ttt_bot_gchat(v.personality, "traitor_spotted", bot:Nick())
+                                            v:BotSay(chat)
                                             
                                             timer.Simple(string.len(chat), function()
                                                 AddKnownTraitor(bot)
-                                                v:BotSay(chat)
                                             end)
                                             callout = true
                                         end
@@ -1965,7 +1838,7 @@ timer.Create("TTTDetectTraitorWeapons", 1, 0, function()
     end
 end)
 
-timer.Create("ClientDisplayInfoTTTBots", 0.1, 0, function()
+timer.Create("ClientDisplayInfoTTTBots", 1, 0, function()
 if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     local p0 = 0
     local p1 = 0
@@ -1978,12 +1851,6 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
         if per == 2 then p2 = p2 + 1 end
         if per == 3 then p3 = p3 + 1 end
     end
-    local sts = {}
-    for i,v in pairs(player.GetBots()) do
-        if v.status != nil then
-            table.insert(sts, v.status)
-        end
-    end
     local tab = {
         ["per0"] = p0,
         ["per1"] = p1,
@@ -1994,11 +1861,7 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
         ["hide"] = GetConVar("ttt_bot_disable_hiding"):GetInt(),
         ["rdm"] = GetConVar("ttt_bot_rdm"):GetInt(),
         ["plant"] = GetConVar("ttt_bot_plant_bombs"):GetInt(),
-        ["chat"] = GetConVar("ttt_bot_enable_chat"):GetInt(),
-
-        ["statuses"] = sts,
-        ["rndstrt"] = roundIsActive,
-        ["dbg"] = GetConVar("ttt_bot_debug_ui"):GetInt(),
+        ["chat"] = GetConVar("ttt_bot_enable_chat"):GetInt()
     }
     net.Start("ClientDisplayInfo")
     net.WriteTable(tab)

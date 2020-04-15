@@ -3,7 +3,6 @@ if SERVER then AddCSLuaFile() end
 ENT.Base = "base_nextbot"
 ENT.Type = "nextbot"
 
-print("loaded")
 
 function ENT:ChasePos()
   if self.PosGen == nil then return end
