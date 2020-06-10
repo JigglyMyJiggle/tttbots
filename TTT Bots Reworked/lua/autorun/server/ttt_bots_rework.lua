@@ -133,7 +133,7 @@ end
 
 local DISABLEHIDING = 0
 local ROAMWALK = 1
-local WPM = 20
+local CPS = 10
 local roundIsActive = true
 
 function Meta:UseHealthStation(cmd)
@@ -263,9 +263,9 @@ function Meta:InitializeBot(profile)
     bot.massinit = false // a boolean determining whether or not the traitor bot is to go on a rampage
     bot.personality = profile.personality // the personality # from the bots profile
     bot.accuracy = profile.accuracy // the accuracy from the bots profile
-    bot.nav = ents.Create("ttt_bots_nextbot") // create the nav
-    bot.nav:SetOwner(bot) // set the owner so it doesnt ocllide
-    bot.nav:Spawn() // spawn the nav into the world
+    bot.navigator = ents.Create("ttt_bots_nextbot") // create the nav
+    bot.navigator:SetOwner(bot) // set the owner so it doesnt ocllide
+    bot.navigator:Spawn() // spawn the nav into the world
     bot.target = nil // who the bot is shooting at or attacking with a melee
     bot.lastseen = Vector(0,0,0) // the last position that the target was seen at
     bot.hidemode = false // determines if the bot is actively searching for a hiding spot
@@ -281,7 +281,11 @@ function Meta:InitializeBot(profile)
         if !IsValid(bot) then timer.Destroy("usertimer of bot "..name) return end
         bot.use = math.max(0,bot.use-1)
     end)
-    bot.hidingspots = bot.nav:FindSpots({type='hiding',radius=99999})
+    bot.hidingspots = bot.navigator:FindSpots({type='hiding',radius=99999})
+end
+
+local function GetTimeToSpeak(t) -- t is number of characters
+    return (0.1 * 8/DIFF * (t/CPS))
 end
 
 function Meta:BotSay(text,tea) -- adds a typing delay for the bots, add cmd to make bot stop to type
@@ -289,7 +293,8 @@ function Meta:BotSay(text,tea) -- adds a typing delay for the bots, add cmd to m
         local t = string.len(text)
         t = tonumber(t)
         self.chatting = true
-        timer.Simple(t/WPM, function()
+        --print("info ", t, GetTimeToSpeak(t))
+        timer.Simple(GetTimeToSpeak(t), function()
             if self:Health() > 0 and !self:IsSpec() then
                 if (GetConVar("ttt_bot_enable_chat"):GetInt() == 1) then
                     self:Say(text,tea)
@@ -690,13 +695,13 @@ function OnLogCreated(log)
                                     bot:BotSay(cha)
                                 end
                                 local t = string.len(cha)
-                                timer.Simple(t/WPM, function()
+                                timer.Simple(GetTimeToSpeak(t + 5), function()
                                     if bot:Health() > 0 then
                                         AddKnownTraitor(log.attacker)
                                     end
                                 end)
                             --[[else // If the log's victim is the bot, then do this:
-                                timer.Simple(240/WPM, function() // The bots have an impaired reaction time when they're all alone so that players can kill them significantly easier.
+                                timer.Simple(240/CPS, function() // The bots have an impaired reaction time when they're all alone so that players can kill them significantly easier.
                                     if bot:Health() > 0 then // They still, however, will not call them out when they're alone because that would make it almost impossible to subdue them.
                                         bot.target = log.attacker
                                     end
@@ -734,7 +739,7 @@ function OnLogCreated(log)
                             sus[#sus+1] = s
                             local phra = ttt_bot_gchat(bot.personality, "suson", log.attacker:Nick())
                             local len = #phra
-                            timer.Simple(len/WPM, function()
+                            timer.Simple(GetTimeToSpeak(len), function()
                                 if bot:Health() > 0 and !bot:IsSpec() then
                                     log.attacker.sus = log.attacker.sus + 1
                                 end
@@ -780,13 +785,29 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
 
     if vic:IsPlayer() and atk:IsPlayer() and (not vic:IsSpec()) and (not atk:IsSpec()) then -- self defense portion
         if vic:IsBot() and vic:Visible(atk) then
-            timer.Simple(160/WPM, function() // The bots have an impaired reaction time when they're all alone so that players can kill them significantly easier.
+            timer.Simple(GetTimeToSpeak(25), function() // The bots have an impaired reaction time when they're all alone so that players can kill them significantly easier.
                 if IsValid(vic) then
                     if vic:Health() > 0 then // They still, however, will not call them out when they're alone because that would make it almost impossible to subdue them.
                         vic.target = atk
                     end
                 end
             end)
+        end
+
+        -- below this comment we are going to check to see if any traitor bots are around. if the attacker or victim is a traitor then there will be a chance that they'll jump in to help.
+
+        for i,v in pairs(GetTraitorBots()) do
+            if ( v:Visible(vic) or v:Visible(atk) )
+                and (v:GetRoleString() == "traitor")
+                and (not IsValid(v.target))
+                and (vic:GetRoleString() == "traitor" or atk:GetRoleString() == "traitor" ) then
+
+                if atk:GetRoleString() == "traitor" then
+                    v.target = vic
+                elseif vic:GetRoleString() == "traitor" then
+                    v.target = atk
+                end
+            end
         end
     end
 
@@ -1046,8 +1067,8 @@ end
 if !ConVarExists("ttt_bot_nav_debug") then
     CreateConVar("ttt_bot_nav_debug", 0, 1, "set to 1 to enable displaying of paths from bot navigators.")
 end
-if !ConVarExists("ttt_bot_wpm") then
-    CreateConVar("ttt_bot_wpm", 20, 1, "Words Per Minute typing speed of bots: this variable is internally multiplied by the bot difficulty convar")
+if !ConVarExists("ttt_bot_cps") then
+    CreateConVar("ttt_bot_cps", 10, 1, "Characters Per Second typing speed of bots: this variable is internally multiplied by the bot difficulty convar")
 end
 if !ConVarExists("ttt_bot_rdm") then
     CreateConVar("ttt_bot_rdm", 0, 1, "Do troll bots RDM non-players? Adds to the chaos factor + gives the traitors a chance to win!")
@@ -1071,7 +1092,7 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
 
     DISABLEHIDING = GetConVar("ttt_bot_disable_hiding"):GetInt()
     ROAMWALK = GetConVar("ttt_bot_roamwalk"):GetInt()
-    WPM = math.abs(GetConVar("ttt_bot_wpm"):GetInt()*GetConVar("ttt_bot_difficulty"):GetInt())
+    CPS = math.abs(GetConVar("ttt_bot_cps"):GetInt()*GetConVar("ttt_bot_difficulty"):GetInt())
 
 end)
 
@@ -1189,7 +1210,7 @@ function Meta:FollowPath( -- returns if the bot is within stopatdist of the goal
     if speed == nil then return end
     if turnspeed == nil then return end
     if spotatdist == nil then return end]]
-    local nav = self.nav
+    local nav = self.navigator
     nav.PosGen = goal
     if nav.P == nil then return end
     --print(#nav.P:GetAllSegments())
@@ -1392,7 +1413,10 @@ function Meta:AttackCrates(cmd)
     if t != nil then
         self.attackingCrate = true
         self:SelectWeapon("weapon_zm_improvised")
-        if (self:FollowPath(cmd, t:GetPos()+Vector(0,0,50), 1000, 0.15, 64*1.3,true)) then
+        local ent = self:GetEyeTrace().Entity
+        local lookingAtIt = (IsValid(ent) and ent == t)
+
+        if (self:FollowPath(cmd, t:GetPos()+Vector(0,0,50), 1000, 0.15, 64*1.3,true) or lookingAtIt) then
             self:LookAt(t:GetPos()-Vector(0,0,50),cmd,0.3)
             //self.crouching = true
             cmd:SetButtons(IN_ATTACK, IN_DUCK, IN_FORWARD)
@@ -1532,17 +1556,19 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     if bot.chatting then return end
 
     if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
-    if bot.nav:IsValid() == false then
-        bot.nav = ents.Create("ttt_bots_nextbot") // create the nav
-        bot.nav:SetOwner(bot) // set the owner so it doesnt collide
-        bot.nav:Spawn() // spawn the nav into the world
+    if not (IsValid(bot) or IsValid(bot.navigator)) then
+        bot.navigator = ents.Create("ttt_bots_nextbot") // create the nav
+        bot.navigator:SetOwner(bot) // set the owner so it doesnt collide
+        bot.navigator:Spawn() // spawn the nav into the world
     end
+
+    if not IsValid(bot.navigator) then return end
     local role = bot:GetRoleString()
     bot.armed = bot:isBotArmed()
     if bot:Health() > 0 then
-        bot.nav:SetPos(bot:GetPos())
+        bot.navigator:SetPos(bot:GetPos())
     else
-        bot.nav:SetPos(Vector(0,0,50))
+        bot.navigator:SetPos(Vector(0,0,50))
     end
 
     if bot:Health() <= 0 then return end
@@ -1664,17 +1690,17 @@ end)]]
 hook.Add("PlayerSpawn", "TTTBotsSpawn", function(bot)
 if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
     if bot:IsBot() then
-        if bot.nav != nil then
-            if bot.nav:IsValid() then
-                bot.nav:Remove()
+        if bot.navigator != nil then
+            if bot.navigator:IsValid() then
+                bot.navigator:Remove()
             end
-            bot.nav = ents.Create("ttt_bots_nextbot") // create the nav
-            bot.nav:SetOwner(bot) // set the owner so it doesnt ocllide
-            bot.nav:Spawn() // spawn the nav into the world
+            bot.navigator = ents.Create("ttt_bots_nextbot") // create the nav
+            bot.navigator:SetOwner(bot) // set the owner so it doesnt ocllide
+            bot.navigator:Spawn() // spawn the nav into the world
         else
-            bot.nav = ents.Create("ttt_bots_nextbot") // create the nav
-            bot.nav:SetOwner(bot) // set the owner so it doesnt ocllide
-            bot.nav:Spawn() // spawn the nav into the world
+            bot.navigator = ents.Create("ttt_bots_nextbot") // create the nav
+            bot.navigator:SetOwner(bot) // set the owner so it doesnt ocllide
+            bot.navigator:Spawn() // spawn the nav into the world
         end
     end
 end)
@@ -1794,7 +1820,9 @@ timer.Create("TTTDetectTraitorWeapons", 1, 0, function()
                                             v:BotSay(chat)
                                             
                                             timer.Simple(string.len(chat), function()
-                                                AddKnownTraitor(bot)
+                                                if IsValid(v) then -- ensure the witness is still alive.
+                                                    AddKnownTraitor(bot)
+                                                end
                                             end)
                                             callout = true
                                         end
@@ -1822,7 +1850,8 @@ timer.Create("TTTDetectTraitorWeapons", 1, 0, function()
                                     local cha = ttt_bot_gchat(bot.personality,"kos",view:Nick())
                                     bot:BotSay(cha)
                                     local t = string.len(cha)
-                                    timer.Simple(t/WPM, function()
+                                    print("t=", t, t/(CPS/60) )
+                                    timer.Simple(t/(CPS/60), function()
                                         if bot:Health() > 0 then
                                             AddKnownTraitor(view)
                                         end
@@ -1831,6 +1860,24 @@ timer.Create("TTTDetectTraitorWeapons", 1, 0, function()
 
                             end
                         end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+timer.Create("TTTBotsPreventMemoryLeaks", 1, 0, function()
+    if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
+    for i,v in pairs(ents.GetAll()) do
+        if v:GetClass() == "ttt_bot_navigator" then
+            if not IsValid(v:GetOwner()) then
+                v:Remove()
+            else
+                local owner = v:GetOwner()
+                if owner:IsPlayer() then
+                    if owner:Health() <= 0 or owner:IsSpec() then
+                        v:Remove()
                     end
                 end
             end
@@ -1856,7 +1903,7 @@ if gmod.GetGamemode().Name != "Trouble in Terrorist Town" then return end
         ["per1"] = p1,
         ["per2"] = p2,
         ["per3"] = p3,
-        ["wpm"] = GetConVar("ttt_bot_wpm"):GetInt(),
+        ["cps"] = GetConVar("ttt_bot_cps"):GetInt(),
         ["diff"] = GetConVar("ttt_bot_difficulty"):GetInt(),
         ["hide"] = GetConVar("ttt_bot_disable_hiding"):GetInt(),
         ["rdm"] = GetConVar("ttt_bot_rdm"):GetInt(),

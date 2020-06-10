@@ -3,7 +3,7 @@ local info = {
     ["per1"] = 0,
     ["per2"] = 0,
     ["per3"] = 0,
-    ["wpm"] = 0,
+    ["cps"] = 0,
     ["diff"] = 0,
     ["hide"] = 0,
     ["rdm"] = 0,
@@ -17,10 +17,10 @@ local maxplys = game.MaxPlayers()
 
 local settings = {
     {
-        ["Tracker"] = "wpm",
-        ["Config Name"] = "ttt_bot_wpm",
-        ["Display Name"] = "Bot Typing Speed",
-        ["Description"] = "This value is essentially the reaction speed of the bots \n (Please note this value is internally multiplied by the difficulty)"
+        ["Tracker"] = "cps",
+        ["Config Name"] = "ttt_bot_cps",
+        ["Display Name"] = "Bot CPS Typing Speed",
+        ["Description"] = "This value is essentially the reaction speed of the bots \n (Please note this value is internally multiplied by the difficulty. CPS of 10 with a difficulty of 4 would mean 40 CPS total)"
     },
     {
         ["Tracker"] = "diff",
@@ -59,7 +59,7 @@ local settings = {
 }
 
 net.Receive("RequestMenu", function()
-    PrintTable(info)
+    --PrintTable(info)
     local ply = LocalPlayer()
     if ply:IsSuperAdmin() then
         local Frame = vgui.Create( "DFrame" )
